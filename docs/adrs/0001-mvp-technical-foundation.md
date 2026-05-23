@@ -22,18 +22,18 @@
 | Модель | `nvidia/nemotron-3-nano-30b-a3b:free` (задаётся в конфиге) |
 | Конфигурация env | **python-dotenv** (загрузка из `.env`) |
 | Контейнер | **Docker** — только локальный запуск |
-| Автоматизация | **`make.sh`** + **`Makefile`** (обёртка) |
+| Автоматизация | **`make.sh`**, **`make.ps1`**, **`Makefile`** (обёртка над `make.sh`) |
 
 **Зависимости MVP:** `aiogram`, `openai`, `python-dotenv`.  
 БД, очереди, web-фреймворки на этапе MVP не используются.
 
 ### 2. Сборка и запуск
 
-- Вся логика команд — в **`make.sh`**
+- Логика команд — в **`make.sh`** (bash) и **`make.ps1`** (PowerShell)
 - **`Makefile`** — тонкая обёртка, делегирует вызовы в `make.sh`
 - Команды MVP: `install`, `run`, `docker-run`
-- Примеры: `make run` / `./make.sh run`, `make docker-run` / `./make.sh docker-run`
-- На Windows: предпочтительно **WSL**; `make.sh` также работает в Git Bash
+- Примеры: `make run` / `./make.sh run` / `.\make.ps1 run`, `make docker-run` / `./make.sh docker-run` / `.\make.ps1 docker-run`
+- На Windows: **PowerShell** — `make.ps1`; также WSL или Git Bash — `make.sh`
 - Docker запускается **через WSL** (Docker Desktop + WSL2)
 - Деплой на удалённый сервер **не предусмотрен**
 
@@ -70,7 +70,7 @@
 - Минимальный стек — быстрый старт и простая отладка
 - uv ускоряет управление зависимостями
 - polling и in-memory история не требуют инфраструктуры
-- `make` + `make.sh` покрывают Linux, macOS и Windows (WSL)
+- `make.sh` + `make.ps1` + `Makefile` покрывают Linux, macOS, WSL и Windows (PowerShell)
 
 ### Отрицательные / ограничения
 

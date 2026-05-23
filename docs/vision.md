@@ -39,13 +39,14 @@
 
 ### Сборка и локальный запуск
 
-- **`make.sh`** — основной shell-скрипт с логикой команд (`install`, `run`, `docker-run`)
-- **`Makefile`** — тонкая обёртка над `make.sh` для универсального запуска через `make` (Linux, macOS, WSL)
+- **`make.sh`** — shell-скрипт с логикой команд (`install`, `run`, `docker-run`) для Linux, macOS, WSL, Git Bash
+- **`make.ps1`** — PowerShell-скрипт с теми же командами для Windows
+- **`Makefile`** — тонкая обёртка над `make.sh` для запуска через `make` (Linux, macOS, WSL)
 - Примеры:
-  - `make install` / `./make.sh install`
-  - `make run` / `./make.sh run`
-  - `make docker-run` / `./make.sh docker-run`
-- На Windows: предпочтительно **WSL**; `make.sh` также работает в Git Bash
+  - `make install` / `./make.sh install` / `.\make.ps1 install`
+  - `make run` / `./make.sh run` / `.\make.ps1 run`
+  - `make docker-run` / `./make.sh docker-run` / `.\make.ps1 docker-run`
+- На Windows: **PowerShell** — `make.ps1`; также WSL или Git Bash — `make.sh`
 - **Docker** — локальный запуск в контейнере **через WSL** (Docker Desktop + WSL2); деплой на удалённый сервер не предусмотрен
 
 ---
@@ -80,7 +81,7 @@
 
 ### Запуск
 
-- Логика команд — в `make.sh`; `Makefile` делегирует вызовы
+- Логика команд — в `make.sh` и `make.ps1`; `Makefile` делегирует вызовы в `make.sh`
 - Команды MVP: `install`, `run`, `docker-run`
 
 ### Без оверинжиниринга

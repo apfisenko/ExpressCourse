@@ -9,3 +9,22 @@
 Поведение и стиль ответов задаются заранее — ассистент действует в определённой роли (например, консультант, наставник, помощник в конкретной области). Роль определяет, как бот формулирует ответы и на какие темы ориентируется.
 
 Подробнее об идее проекта — в [docs/idea.md](docs/idea.md).
+
+## Запуск
+
+1. Скопировать `.env.example` → `.env` и заполнить `TELEGRAM_BOT_TOKEN`
+2. Установить зависимости и запустить бота:
+
+```powershell
+# Windows (PowerShell)
+.\make.ps1 install
+.\make.ps1 run
+```
+
+```bash
+# Linux / macOS / WSL / Git Bash
+make install && make run
+# или: ./make.sh install && ./make.sh run
+```
+
+Подробнее о стеке и командах — в [docs/vision.md](docs/vision.md).
