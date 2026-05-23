@@ -31,7 +31,7 @@ class Bot:
         @self._dp.message(CommandStart())
         async def handle_start(message: types.Message) -> None:
             await message.answer(
-                "Привет! Я наставник ExpressCourse. Задайте вопрос по обучению — помогу разобраться."
+                "Привет! Я консультант по Python. Задайте вопрос по языку — помогу с кодом и разбором ошибок."
             )
 
         @self._dp.message()

@@ -15,11 +15,14 @@ class Config:
 
     def reload_llm_settings(self) -> None:
         load_dotenv(_ENV_FILE, override=True)
-        self.open_api_key = self._require("OPEN_API_KEY")
+        self.open_api_key = self._require_any("OPEN_API_KEY", "OPENROUTER_API_KEY")
         self.open_base_url = os.getenv("OPEN_BASE_URL", "https://openrouter.ai/api/v1").strip()
-        self.model = (os.getenv("MODEL") or os.getenv(
-            "LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free"
-        )).strip()
+        self.model = (
+            os.getenv("MODEL")
+            or os.getenv("LLM_MODEL")
+            or os.getenv("OPENROUTER_MODEL")
+            or "nvidia/nemotron-3-nano-30b-a3b:free"
+        ).strip()
         self.system_prompt = self._read_system_prompt()
         self.dialog_max_pairs = self._read_int("DIALOG_MAX_PAIRS", 20)
 
@@ -49,3 +52,10 @@ class Config:
         if not value:
             raise ValueError(f"{name} is required")
         return value.strip()
+
+    def _require_any(self, *names: str) -> str:
+        for name in names:
+            value = os.getenv(name)
+            if value:
+                return value.strip()
+        raise ValueError(f"One of {', '.join(names)} is required")

@@ -37,6 +37,12 @@
 | LLM | **openai**-клиент → провайдер **OpenRouter** |
 | Модель | `nvidia/nemotron-3-nano-30b-a3b:free` (задаётся в конфиге) |
 
+### Роль ассистента
+
+- Системный промпт — файл **`system.txt`** в корне проекта
+- Роль: **программист-консультант по Python** (см. [idea.md](idea.md))
+- Промпт подключается как `system`-сообщение при каждом запросе к LLM
+
 ### Сборка и локальный запуск
 
 - **`make.sh`** — shell-скрипт с логикой команд (`install`, `run`, `docker-run`) для Linux, macOS, WSL, Git Bash
@@ -47,7 +53,34 @@
   - `make run` / `./make.sh run` / `.\make.ps1 run`
   - `make docker-run` / `./make.sh docker-run` / `.\make.ps1 docker-run`
 - На Windows: **PowerShell** — `make.ps1`; также WSL или Git Bash — `make.sh`
-- **Docker** — локальный запуск в контейнере **через WSL** (Docker Desktop + WSL2); деплой на удалённый сервер не предусмотрен
+
+### Docker (локально)
+
+- **`Dockerfile`** — образ Python 3.11 + `uv`, запуск `main.py`
+- **`.dockerignore`** — исключает `.venv`, `__pycache__`, `.git` и т.п.
+- Локальный запуск в контейнере **через WSL** (Docker Desktop + WSL2) или напрямую на Linux / macOS
+
+### Деплой в Railway
+
+Облачный хостинг — **[Railway](https://railway.app)**. Тот же Docker-образ, что и локально; отдельный web-сервер не нужен.
+
+| Аспект | Решение |
+|--------|---------|
+| Способ деплоя | GitHub-репозиторий → Railway, сборка по **`Dockerfile`** |
+| Процесс | Один long-running worker: `uv run python main.py` (polling) |
+| Webhook | **Не используется** — polling достаточен для MVP |
+| Переменные окружения | Панель Railway → Variables (те же ключи, что в `.env.example`) |
+| Секреты | Только в Variables Railway; `.env` в репозиторий не коммитится |
+| Health check | Не требуется (нет HTTP-эндпоинта); Railway держит контейнер запущенным |
+| Перезапуск | При рестарте контейнера история диалога сбрасывается (in-memory) |
+
+Минимальный набор переменных на Railway (вкладка **Variables**):
+
+- `TELEGRAM_BOT_TOKEN`
+- `OPEN_API_KEY` (или `OPENROUTER_API_KEY`)
+- `MODEL` — опционально (или `OPENROUTER_MODEL` / `LLM_MODEL`; иначе дефолт из `Config`)
+
+Конфиг деплоя — **`railway.json`** (сборка по `Dockerfile`, restart on failure).
 
 ---
 
@@ -82,10 +115,10 @@
 ### Запуск
 
 - Логика команд — в `make.sh` и `make.ps1`; `Makefile` делегирует вызовы в `make.sh`
-- Команды MVP: `install`, `run`, `docker-run`
+- Команды: `install`, `run`, `docker-run`
+- Облако: деплой на Railway по `Dockerfile`, без дополнительных скриптов
 
 ### Без оверинжиниринга
 
 - Нет абстрактных базовых классов и паттернов «на будущее»
 - Нет тестовой инфраструктуры на старте
-
