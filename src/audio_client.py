@@ -12,7 +12,7 @@ from openai import (
 )
 
 from src.config import Config
-from src.llm_client import LlmAuthError, LlmProviderError
+from src.llm_client import LlmAuthError, LlmProviderError, raise_for_completion_error
 
 
 class AudioClient:
@@ -38,13 +38,26 @@ class AudioClient:
         audio_format: str,
     ) -> str:
         encoded = base64.b64encode(audio_bytes).decode("ascii")
-        content: list[dict[str, object]] = [
-            {"type": "text", "text": "Обработай голосовое сообщение пользователя."},
-            {
-                "type": "input_audio",
-                "input_audio": {"data": encoded, "format": audio_format},
-            },
-        ]
+        user_text = "Обработай голосовое сообщение пользователя."
+
+        if self._config.is_local_provider:
+            # Ollama: WAV через image_url (input_audio не поддерживается)
+            content: list[dict[str, object]] = [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:audio/wav;base64,{encoded}"},
+                },
+                {"type": "text", "text": user_text},
+            ]
+        else:
+            content = [
+                {"type": "text", "text": user_text},
+                {
+                    "type": "input_audio",
+                    "input_audio": {"data": encoded, "format": audio_format},
+                },
+            ]
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": content},
@@ -68,6 +81,8 @@ class AudioClient:
             APIStatusError,
             OpenAIError,
         ) as exc:
-            raise LlmProviderError from exc
+            raise_for_completion_error(
+                exc, "audio", self._model, local_provider=self._config.is_local_provider
+            )
 
         return response.choices[0].message.content or ""

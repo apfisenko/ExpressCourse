@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from io import BytesIO
 
@@ -6,9 +5,9 @@ from aiogram import Bot as AiogramBot
 from aiogram import Dispatcher, F, types
 from aiogram.filters import CommandStart
 
-from src.audio_converter import AudioConverter, AudioConverterError
+from src.audio_converter import AudioConverterError
 from src.dialog_service import DialogService
-from src.llm_client import LlmAuthError, LlmProviderError
+from src.llm_client import LlmAuthError, LlmProviderError, ModalityNotSupportedError
 
 AUTH_ERROR_MESSAGE = (
     "Ошибка авторизации LLM. Проверьте ключ API (OPEN_API_KEY)."
@@ -18,6 +17,14 @@ PROVIDER_ERROR_MESSAGE = (
 )
 VOICE_ERROR_MESSAGE = (
     "Не удалось обработать голосовое. Установите ffmpeg или напишите текстом."
+)
+AUDIO_NOT_SUPPORTED_MESSAGE = (
+    "Текущая модель не поддерживает обработку голосовых сообщений. "
+    "Напишите текстом или выберите в Ollama модель с поддержкой аудио."
+)
+IMAGE_NOT_SUPPORTED_MESSAGE = (
+    "Текущая модель не поддерживает обработку фото. "
+    "Опишите продукты текстом или выберите vision-модель в Ollama (например, llava)."
 )
 ERROR_MESSAGE = "Сейчас не могу ответить. Попробуйте позже."
 MAX_MESSAGE_LENGTH = 4096
@@ -58,6 +65,9 @@ class Bot:
                     message.caption or "",
                 )
                 await self._send_reply(message, reply)
+            except ModalityNotSupportedError:
+                logging.warning("Image modality not supported by current model")
+                await self._send_error_message(message, IMAGE_NOT_SUPPORTED_MESSAGE)
             except LlmAuthError:
                 logging.exception("LLM authentication failed")
                 await self._send_error_message(message, AUTH_ERROR_MESSAGE)
@@ -74,16 +84,14 @@ class Bot:
                 file = await self._bot.get_file(message.voice.file_id)
                 buffer = BytesIO()
                 await self._bot.download_file(file.file_path, buffer)
-                mp3_bytes = await asyncio.to_thread(
-                    AudioConverter.telegram_voice_to_mp3,
-                    buffer.getvalue(),
-                )
                 reply = await self._dialog.reply_voice(
                     message.from_user.id,
-                    mp3_bytes,
-                    "mp3",
+                    buffer.getvalue(),
                 )
                 await self._send_reply(message, reply)
+            except ModalityNotSupportedError:
+                logging.warning("Audio modality not supported by current model")
+                await self._send_error_message(message, AUDIO_NOT_SUPPORTED_MESSAGE)
             except AudioConverterError:
                 logging.exception("Voice conversion failed")
                 await self._send_error_message(message, VOICE_ERROR_MESSAGE)

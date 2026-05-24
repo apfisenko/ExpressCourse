@@ -1,10 +1,12 @@
+import asyncio
 import logging
 import re
 
 from src.audio_client import AudioClient
+from src.audio_converter import AudioConverter
 from src.config import Config
 from src.image_client import ImageClient
-from src.llm_client import LlmAuthError, LlmClient, LlmProviderError
+from src.llm_client import LlmAuthError, LlmProviderError, ModalityNotSupportedError
 
 _PROFILE_FIELDS = {
     "goals": re.compile(
@@ -53,10 +55,11 @@ class DialogService:
         self._audio_prompt = self._config.audio_prompt
         self._max_pairs = self._config.dialog_max_pairs
         logging.info(
-            "LLM settings reloaded: model=%s, vision=%s, audio=%s, key_len=%d",
+            "LLM settings reloaded: model=%s, vision=%s, audio=%s, local=%s, key_len=%d",
             self._config.model,
             self._config.vision_model,
             self._config.audio_model,
+            self._config.is_local_provider,
             len(self._config.open_api_key),
         )
 
@@ -116,13 +119,19 @@ class DialogService:
         self._trim(messages)
         return reply
 
-    async def reply_voice(
-        self,
-        user_id: int,
-        audio_bytes: bytes,
-        audio_format: str,
-    ) -> str:
+    async def reply_voice(self, user_id: int, ogg_bytes: bytes) -> str:
         self.reload_settings()
+
+        if self._config.is_local_provider:
+            audio_bytes = await asyncio.to_thread(
+                AudioConverter.telegram_voice_to_wav, ogg_bytes
+            )
+            audio_format = "wav"
+        else:
+            audio_bytes = await asyncio.to_thread(
+                AudioConverter.telegram_voice_to_mp3, ogg_bytes
+            )
+            audio_format = "mp3"
 
         messages = self._history.setdefault(user_id, [])
         messages.append({"role": "user", "content": "[Голосовое сообщение]"})
@@ -149,6 +158,9 @@ class DialogService:
         for attempt in range(2):
             try:
                 return await call()
+            except ModalityNotSupportedError:
+                on_failure()
+                raise
             except (LlmAuthError, LlmProviderError):
                 if attempt == 0:
                     self.reload_settings()

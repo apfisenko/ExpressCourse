@@ -12,7 +12,7 @@ from openai import (
 )
 
 from src.config import Config
-from src.llm_client import LlmAuthError, LlmProviderError
+from src.llm_client import LlmAuthError, LlmProviderError, raise_for_completion_error
 
 
 class ImageClient:
@@ -68,6 +68,8 @@ class ImageClient:
             APIStatusError,
             OpenAIError,
         ) as exc:
-            raise LlmProviderError from exc
+            raise_for_completion_error(
+                exc, "image", self._model, local_provider=self._config.is_local_provider
+            )
 
         return response.choices[0].message.content or ""

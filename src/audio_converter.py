@@ -9,10 +9,20 @@ class AudioConverterError(Exception):
 
 
 class AudioConverter:
-    """Конвертирует голосовые Telegram (OGG/Opus) в MP3 для OpenRouter."""
+    """Конвертирует голосовые Telegram (OGG/Opus) для OpenRouter (MP3) и Ollama (WAV)."""
 
     @staticmethod
     def telegram_voice_to_mp3(ogg_bytes: bytes) -> bytes:
+        return AudioConverter._convert(ogg_bytes, ["-f", "mp3"])
+
+    @staticmethod
+    def telegram_voice_to_wav(ogg_bytes: bytes) -> bytes:
+        return AudioConverter._convert(
+            ogg_bytes, ["-ar", "16000", "-ac", "1", "-f", "wav"]
+        )
+
+    @staticmethod
+    def _convert(ogg_bytes: bytes, output_args: list[str]) -> bytes:
         ffmpeg = AudioConverter._resolve_ffmpeg()
         try:
             result = subprocess.run(
@@ -23,8 +33,7 @@ class AudioConverter:
                     "error",
                     "-i",
                     "pipe:0",
-                    "-f",
-                    "mp3",
+                    *output_args,
                     "pipe:1",
                 ],
                 input=ogg_bytes,
