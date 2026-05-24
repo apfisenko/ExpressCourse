@@ -23,7 +23,15 @@ class Config:
             or os.getenv("OPENROUTER_MODEL")
             or "nvidia/nemotron-3-nano-30b-a3b:free"
         ).strip()
-        self.system_prompt = self._read_system_prompt()
+        self.system_prompt = self._read_prompt_file("SYSTEM_PROMPT_FILE", "system.txt")
+        self.image_prompt = self._read_prompt_file("IMAGE_PROMPT_FILE", "prompts/image.txt")
+        self.audio_prompt = self._read_prompt_file("AUDIO_PROMPT_FILE", "prompts/audio.txt")
+        self.vision_model = os.getenv(
+            "VISION_MODEL", "google/gemini-2.0-flash-lite-preview-02-05:free"
+        ).strip()
+        self.audio_model = os.getenv(
+            "AUDIO_MODEL", "openai/gpt-audio-mini"
+        ).strip()
         self.dialog_max_pairs = self._read_int("DIALOG_MAX_PAIRS", 20)
 
     def _read_int(self, name: str, default: int) -> int:
@@ -36,8 +44,8 @@ class Config:
             raise ValueError(f"{name} must be >= 1")
         return value
 
-    def _read_system_prompt(self) -> str:
-        path = os.getenv("SYSTEM_PROMPT_FILE", "system.txt").strip()
+    def _read_prompt_file(self, env_name: str, default_path: str) -> str:
+        path = os.getenv(env_name, default_path).strip()
         prompt_path = Path(path)
         if not prompt_path.is_absolute():
             prompt_path = _PROJECT_ROOT / prompt_path

@@ -37,7 +37,7 @@ stop_bot() {
 
 stop_docker() {
   if command -v docker >/dev/null 2>&1; then
-    docker rm -f express-course >/dev/null 2>&1 || true
+    docker compose down --remove-orphans >/dev/null 2>&1 || true
   fi
 }
 
@@ -56,12 +56,7 @@ case "${1:-}" in
   docker-run)
     stop_bot
     stop_docker
-    docker build -t express-course .
-    docker run --rm --name express-course \
-      --env-file .env \
-      -v "$ROOT/.env:/app/.env:ro" \
-      -v "$ROOT/system.txt:/app/system.txt:ro" \
-      express-course
+    docker compose up --build
     ;;
   *)
     echo "Usage: $0 {install|stop|run|docker-run}"

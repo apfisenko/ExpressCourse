@@ -1,0 +1,10 @@
+services:
+  bot:
+    build: .
+    container_name: express-course
+    env_file:
+      - .env
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./system.txt:/app/system.txt:ro
+      - ./prompts:/app/prompts:ro

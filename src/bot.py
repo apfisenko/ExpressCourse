@@ -1,9 +1,12 @@
+import asyncio
 import logging
+from io import BytesIO
 
 from aiogram import Bot as AiogramBot
-from aiogram import Dispatcher, types
+from aiogram import Dispatcher, F, types
 from aiogram.filters import CommandStart
 
+from src.audio_converter import AudioConverter, AudioConverterError
 from src.dialog_service import DialogService
 from src.llm_client import LlmAuthError, LlmProviderError
 
@@ -13,7 +16,11 @@ AUTH_ERROR_MESSAGE = (
 PROVIDER_ERROR_MESSAGE = (
     "Сервис модели временно недоступен или отклонил запрос. Попробуйте позже."
 )
+VOICE_ERROR_MESSAGE = (
+    "Не удалось обработать голосовое. Установите ffmpeg или напишите текстом."
+)
 ERROR_MESSAGE = "Сейчас не могу ответить. Попробуйте позже."
+MAX_MESSAGE_LENGTH = 4096
 
 
 class Bot:
@@ -31,8 +38,64 @@ class Bot:
         @self._dp.message(CommandStart())
         async def handle_start(message: types.Message) -> None:
             await message.answer(
-                "Привет! Я консультант по Python. Задайте вопрос по языку — помогу с кодом и разбором ошибок."
+                "Привет! Я ИИ-нутрициолог. Помогу разобрать рацион и дам рекомендации по питанию.\n\n"
+                "Расскажите о своих целях (похудение, набор массы, здоровое питание…) — "
+                "или сразу задайте вопрос. Можно отправить фото еды, холодильника или голосовое.\n"
+                "Профиль явно: «Цель: …», «Аллергии: …»."
             )
+
+        @self._dp.message(F.photo)
+        async def handle_photo(message: types.Message) -> None:
+            try:
+                photo = message.photo[-1]
+                file = await self._bot.get_file(photo.file_id)
+                buffer = BytesIO()
+                await self._bot.download_file(file.file_path, buffer)
+                reply = await self._dialog.reply_photo(
+                    message.from_user.id,
+                    buffer.getvalue(),
+                    "image/jpeg",
+                    message.caption or "",
+                )
+                await self._send_reply(message, reply)
+            except LlmAuthError:
+                logging.exception("LLM authentication failed")
+                await self._send_error_message(message, AUTH_ERROR_MESSAGE)
+            except LlmProviderError:
+                logging.exception("LLM provider error")
+                await self._send_error_message(message, PROVIDER_ERROR_MESSAGE)
+            except Exception:
+                logging.exception("Failed to process photo")
+                await self._send_error_message(message, ERROR_MESSAGE)
+
+        @self._dp.message(F.voice)
+        async def handle_voice(message: types.Message) -> None:
+            try:
+                file = await self._bot.get_file(message.voice.file_id)
+                buffer = BytesIO()
+                await self._bot.download_file(file.file_path, buffer)
+                mp3_bytes = await asyncio.to_thread(
+                    AudioConverter.telegram_voice_to_mp3,
+                    buffer.getvalue(),
+                )
+                reply = await self._dialog.reply_voice(
+                    message.from_user.id,
+                    mp3_bytes,
+                    "mp3",
+                )
+                await self._send_reply(message, reply)
+            except AudioConverterError:
+                logging.exception("Voice conversion failed")
+                await self._send_error_message(message, VOICE_ERROR_MESSAGE)
+            except LlmAuthError:
+                logging.exception("LLM authentication failed")
+                await self._send_error_message(message, AUTH_ERROR_MESSAGE)
+            except LlmProviderError:
+                logging.exception("LLM provider error")
+                await self._send_error_message(message, PROVIDER_ERROR_MESSAGE)
+            except Exception:
+                logging.exception("Failed to process voice message")
+                await self._send_error_message(message, ERROR_MESSAGE)
 
         @self._dp.message()
         async def handle_message(message: types.Message) -> None:
@@ -40,7 +103,7 @@ class Bot:
                 return
             try:
                 reply = await self._dialog.reply(message.from_user.id, message.text)
-                await message.answer(reply)
+                await self._send_reply(message, reply)
             except LlmAuthError:
                 logging.exception("LLM authentication failed")
                 await self._send_error_message(message, AUTH_ERROR_MESSAGE)
@@ -50,6 +113,27 @@ class Bot:
             except Exception:
                 logging.exception("Failed to process message")
                 await self._send_error_message(message, ERROR_MESSAGE)
+
+    async def _send_reply(self, message: types.Message, text: str) -> None:
+        for chunk in self._split_message(text):
+            await message.answer(chunk)
+
+    def _split_message(self, text: str) -> list[str]:
+        if len(text) <= MAX_MESSAGE_LENGTH:
+            return [text]
+
+        chunks: list[str] = []
+        rest = text
+        while rest:
+            if len(rest) <= MAX_MESSAGE_LENGTH:
+                chunks.append(rest)
+                break
+            split_at = rest.rfind("\n", 0, MAX_MESSAGE_LENGTH)
+            if split_at <= 0:
+                split_at = MAX_MESSAGE_LENGTH
+            chunks.append(rest[:split_at])
+            rest = rest[split_at:].lstrip("\n")
+        return chunks
 
     async def _send_error_message(
         self, message: types.Message, text: str

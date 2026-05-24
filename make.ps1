@@ -6,6 +6,20 @@ param(
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
 
+function Initialize-ToolPath {
+    $paths = @(
+        (Join-Path $env:USERPROFILE "scoop\shims"),
+        (Join-Path $env:USERPROFILE "scoop\apps\ffmpeg\current\bin")
+    )
+    foreach ($path in $paths) {
+        if ((Test-Path -LiteralPath $path) -and ($env:Path -notlike "*$path*")) {
+            $env:Path = "$path;$env:Path"
+        }
+    }
+}
+
+Initialize-ToolPath
+
 function Get-WslProjectRoot {
     $resolved = (Resolve-Path -LiteralPath $ProjectRoot).Path
 
