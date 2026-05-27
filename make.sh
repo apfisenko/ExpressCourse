@@ -58,8 +58,14 @@ case "${1:-}" in
     stop_docker
     docker compose up --build
     ;;
+  rag-index)
+    uv run python rag_cli.py
+    ;;
+  rag-reindex)
+    uv run python rag_cli.py --reindex
+    ;;
   *)
-    echo "Usage: $0 {install|stop|run|docker-run}"
+    echo "Usage: $0 {install|stop|run|docker-run|rag-index|rag-reindex}"
     exit 1
     ;;
 esac

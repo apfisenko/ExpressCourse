@@ -8,3 +8,4 @@ services:
       - ./.env:/app/.env:ro
       - ./system.txt:/app/system.txt:ro
       - ./prompts:/app/prompts:ro
+      - ./data:/app/data

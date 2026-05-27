@@ -19,6 +19,12 @@ class Config:
         self.langsmith_enabled = os.getenv("LANGSMITH_ENABLED", "false").strip().lower() == "true"
         self.langsmith_api_key = os.getenv("LANGSMITH_API_KEY", "").strip()
         self.langsmith_project = os.getenv("LANGSMITH_PROJECT", "expresscourse").strip()
+        data_dir = Path(os.getenv("DATA_DIR", "data").strip())
+        if not data_dir.is_absolute():
+            data_dir = _PROJECT_ROOT / data_dir
+        self.leads_db_path = data_dir / "leads.db"
+        self.chroma_path = data_dir / "chroma"
+        self.pdf_dir = data_dir
         self.reload_llm_settings()
 
     def reload_llm_settings(self) -> None:
@@ -39,6 +45,12 @@ class Config:
             "AUDIO_MODEL", self.model, _OPENROUTER_DEFAULT_AUDIO
         )
         self.dialog_max_pairs = self._read_int("DIALOG_MAX_PAIRS", 20)
+        self.embedding_model = os.getenv(
+            "EMBEDDING_MODEL", "text-embedding-3-small"
+        ).strip()
+        self.rag_top_k = self._read_int("RAG_TOP_K", 5)
+        self.tavily_api_key = os.getenv("TAVILY_API_KEY", "").strip()
+        self.web_search_max_results = self._read_int("WEB_SEARCH_MAX_RESULTS", 5)
 
     def _read_model(
         self, env_name: str, local_default: str, cloud_default: str

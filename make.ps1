@@ -93,8 +93,14 @@ try {
             $wslRoot = Get-WslProjectRoot
             & wsl.exe bash -lc "cd '$wslRoot' && bash make.sh docker-run"
         }
+        "rag-index" {
+            uv run python rag_cli.py
+        }
+        "rag-reindex" {
+            uv run python rag_cli.py --reindex
+        }
         default {
-            Write-Host "Usage: .\make.ps1 {install|stop|run|docker-run}"
+            Write-Host "Usage: .\make.ps1 {install|stop|run|docker-run|rag-index|rag-reindex}"
             exit 1
         }
     }

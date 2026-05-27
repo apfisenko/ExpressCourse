@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 
 from langsmith import traceable
 
@@ -16,6 +17,7 @@ class AgentService:
         self._system_prompt = config.system_prompt
         self._max_pairs = config.dialog_max_pairs
         self._history: dict[int, list[dict]] = {}
+        self._threads: dict[int, str] = {}
         self._tools: list[dict] = []
 
     def reload_settings(self) -> None:
@@ -27,8 +29,30 @@ class AgentService:
         """Register a tool definition and its async handler callable."""
         self._tools.append({"definition": definition, "handler": handler})
 
-    @traceable(name="agent_handle_message")
+    def reset_session(self, user_id: int) -> None:
+        self._history.pop(user_id, None)
+        self._threads[user_id] = f"{user_id}-{uuid.uuid4().hex[:8]}"
+
+    def reset_history(self, user_id: int) -> None:
+        self.reset_session(user_id)
+
+    def _get_thread_id(self, user_id: int) -> str:
+        if user_id not in self._threads:
+            self._threads[user_id] = f"{user_id}-{uuid.uuid4().hex[:8]}"
+        return self._threads[user_id]
+
     async def handle_message(self, user_id: int, text: str) -> str:
+        thread_id = self._get_thread_id(user_id)
+        return await self._traced_handle_message(
+            user_id,
+            text,
+            langsmith_extra={"metadata": {"thread_id": thread_id, "user_id": str(user_id)}},
+        )
+
+    @traceable(name="agent_handle_message", run_type="chain")
+    async def _traced_handle_message(
+        self, user_id: int, text: str, langsmith_extra: dict | None = None
+    ) -> str:
         self.reload_settings()
 
         history = self._history.setdefault(user_id, [])

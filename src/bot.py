@@ -25,7 +25,7 @@ AUDIO_NOT_SUPPORTED_MESSAGE = (
 )
 IMAGE_NOT_SUPPORTED_MESSAGE = (
     "Текущая модель не поддерживает обработку фото. "
-    "Опишите продукты текстом или выберите vision-модель в Ollama (например, llava)."
+    "Опишите вопрос текстом или выберите vision-модель в Ollama (например, llava)."
 )
 ERROR_MESSAGE = "Сейчас не могу ответить. Попробуйте позже."
 MAX_MESSAGE_LENGTH = 4096
@@ -46,12 +46,19 @@ class Bot:
 
         @self._dp.message(CommandStart())
         async def handle_start(message: types.Message) -> None:
-            await message.answer(
-                "Привет! Я ИИ-нутрициолог. Помогу разобрать рацион и дам рекомендации по питанию.\n\n"
-                "Расскажите о своих целях (похудение, набор массы, здоровое питание…) — "
-                "или сразу задайте вопрос. Можно отправить фото еды, холодильника или голосовое.\n"
-                "Профиль явно: «Цель: …», «Аллергии: …»."
-            )
+            self._agent.reset_session(message.from_user.id)
+            try:
+                reply = await self._agent.handle_message(message.from_user.id, "/start")
+                await self._send_reply(message, reply)
+            except LlmAuthError:
+                logging.exception("LLM authentication failed")
+                await self._send_error_message(message, AUTH_ERROR_MESSAGE)
+            except LlmProviderError:
+                logging.exception("LLM provider error")
+                await self._send_error_message(message, PROVIDER_ERROR_MESSAGE)
+            except Exception:
+                logging.exception("Failed to process /start")
+                await self._send_error_message(message, ERROR_MESSAGE)
 
         @self._dp.message(F.photo)
         async def handle_photo(message: types.Message) -> None:

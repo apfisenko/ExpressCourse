@@ -10,6 +10,8 @@ from openai import (
 )
 from openai.types.chat import ChatCompletionMessageToolCall
 
+from langsmith import traceable
+
 from src.config import Config
 
 
@@ -103,6 +105,7 @@ class LlmClient:
         )
         self._model = self._config.model
 
+    @traceable(name="llm_chat", run_type="llm")
     async def chat(
         self,
         messages: list[dict],
