@@ -1,4 +1,4 @@
-# Техническое видение: ИИ-нутрициолог в Telegram
+# Техническое видение: ИИ-агент-консультант в Telegram
 
 Документ описывает техническое решение для проверки идеи из [idea.md](idea.md).  
 Принцип: **максимально простое решение**, KISS, без оверинжиниринга.
@@ -24,49 +24,98 @@
 | Пакет | Назначение |
 |-------|------------|
 | `aiogram` | Telegram Bot API, polling |
-| `openai` | Клиент для работы с LLM через OpenRouter |
+| `openai` | LLM, embeddings, tool calling через OpenRouter |
 | `python-dotenv` | Загрузка переменных из `.env` |
+| `chromadb` | Векторная БД для RAG (persistent) |
+| `pymupdf4llm` | Парсинг PDF в markdown для индексации |
+| `tavily-python` | Веб-поиск (Tavily Search API) |
+| `langsmith` | Трейсинг агентного цикла и инструментов (`@traceable`) |
 
-Дополнительные библиотеки (БД, очереди, web-фреймворки) на этапе MVP не используются.
+`sqlite3` — стандартная библиотека Python (лиды).  
+Очереди, web-фреймворки и тяжёлые AI-фреймворки (LangChain и аналоги) **не используются**.
 
 ### Интеграции
 
 | Компонент | Технология |
 |-----------|------------|
-| Telegram | **aiogram 3.x**, метод **polling** (без webhook); текст, фото, голосовые |
-| LLM-провайдер | **openai**-клиент → **OpenRouter** (текст, vision, audio) |
-| Текст | Модель задаётся в конфиге (`MODEL`) |
-| Фото | Vision-модель OpenRouter (`VISION_MODEL`) |
-| Аудио | Модель OpenRouter с [multimodal audio](https://openrouter.ai/docs/guides/overview/multimodal/audio): `input_audio` в base64; **Whisper не используется** |
+| Telegram | **aiogram 3.x**, метод **polling** (без webhook); текст |
+| LLM-провайдер | **openai**-клиент → **OpenRouter** (`LLM_BASE_URL`) |
+| Agent loop | **openai SDK tool calling** — явный цикл: запрос → tool calls → выполнение → ответ |
+| Векторная БД | **chromadb** (persistent, `./data/chroma`) |
+| PDF-парсинг | **pymupdf4llm** — корпоративные материалы из `data/` |
+| Веб-поиск | **tavily-python** (Tavily Search API) |
+| Лид-система | **sqlite3** (`./data/leads.db`) |
+| Embeddings | **openai** `text-embedding-3-small` через тот же `LLM_BASE_URL` (OpenRouter); модель задаётся в `.env` |
+| Трейсинг | **langsmith** — `@traceable` на ключевых async-функциях; вкл/выкл через `LANGSMITH_ENABLED` |
 
 ### Роль ассистента
 
-- Роль: **ИИ-нутрициолог** (см. [idea.md](idea.md))
-- Системный промпт — **`system.txt`**: границы роли, тон, уточнение целей перед рекомендациями
-- Отдельные промпты под задачи — **`prompts/image.txt`**, **`prompts/audio.txt`** (анализ фото, расшифровка голоса)
-- Промпты подключаются как `system`-сообщение в соответствующем клиенте
+- Роль: **ИИ-консультант компании** (см. [idea.md](idea.md))
+- Системный промпт — **`prompts/system.txt`**: тон, границы роли, сценарии консультации и сбора заявки
+- Путь к промпту задаётся в `.env` (`SYSTEM_PROMPT_FILE=prompts/system.txt`)
+- Промпт подключается как `system`-сообщение в агентном цикле
 
-### Мультимодальность
+### Агентный цикл и инструменты
 
-Три клиента к OpenRouter — **точки расширения** (подмена реализации через конструктор в `main.py`, без ABC):
+Один текстовый клиент к OpenRouter с **tool calling**. `AgentService` ведёт явный цикл:
 
-| Клиент | Вход | Модель | Промпт |
-|--------|------|--------|--------|
-| `LlmClient` | текст | `MODEL` | `system.txt` |
-| `ImageClient` | фото (base64) | `VISION_MODEL` | `prompts/image.txt` |
-| `AudioClient` | голос (base64, `input_audio`) | `AUDIO_MODEL` | `prompts/audio.txt` |
+1. Сообщение пользователя + история → LLM с описанием инструментов.
+2. Если модель вызывает tool — выполнить, вернуть результат в контекст.
+3. Повторять, пока модель не вернёт финальный текстовый ответ.
+4. Ответ отправить пользователю в Telegram.
 
-`DialogService` маршрутизирует сообщение по типу, подмешивает историю и профиль целей пользователя.
+| Инструмент | Назначение |
+|------------|------------|
+| `rag_search` | Поиск по корпоративным PDF в ChromaDB (портфолио, услуги, программы) |
+| `web_search` | Проверка актуальных фактов в интернете (Tavily) |
+| `capture_lead` | Сохранение заявки: имя и контакт в SQLite |
 
 ```mermaid
-flowchart LR
+flowchart TB
   User --> Bot
-  Bot --> DialogService
-  DialogService -->|text| LlmClient
-  DialogService -->|photo| ImageClient
-  DialogService -->|voice| AudioClient
-  LlmClient & ImageClient & AudioClient --> OpenRouter
+  Bot --> AgentService
+  AgentService --> AgentLoop
+  AgentLoop --> LlmClient
+  LlmClient --> OpenRouter
+  AgentLoop -->|tool call| rag_search
+  AgentLoop -->|tool call| web_search
+  AgentLoop -->|tool call| capture_lead
+  rag_search --> ChromaDB
+  rag_search --> Embeddings
+  Embeddings --> OpenRouter
+  web_search --> Tavily
+  capture_lead --> SQLite
 ```
+
+### Трейсинг (LangSmith)
+
+**LangSmith обязателен** для наблюдаемости агентного цикла. Используется только SDK `langsmith` (без LangChain).
+
+- Импорт: `from langsmith import traceable`
+- Ключевые async-методы помечаются **`@traceable`** — каждый вызов попадает в trace как отдельный span
+- Включение/выключение отправки traces — через `.env`: `LANGSMITH_ENABLED`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` (инициализация в `main.py` / `Config`)
+- При `LANGSMITH_ENABLED=false` декоратор остаётся на функциях; traces не отправляются
+
+| Функция / метод | Где | Зачем в trace |
+|-----------------|-----|---------------|
+| `AgentService.handle_message` (или аналог) | `agent_service.py` | Корневой span диалога |
+| `LlmClient.chat` | `llm_client.py` | Запросы к LLM и tool calling |
+| `EmbeddingClient.embed` | `embedding_client.py` | Эмбеддинги для RAG |
+| `RagService.search` | `rag_service.py` | Tool `rag_search` |
+| `WebSearchTool.search` | `web_search_tool.py` | Tool `web_search` |
+| `LeadStore.capture` | `lead_store.py` | Tool `capture_lead` |
+
+Новые инструменты и шаги агентного цикла — **с `@traceable` по умолчанию**.
+
+### База знаний и данные
+
+| Путь | Содержимое |
+|------|------------|
+| `data/` | Исходные PDF компании (портфолио, услуги, курсы) |
+| `data/chroma/` | Persistent-индекс ChromaDB (создаётся при индексации) |
+| `data/leads.db` | SQLite: заявки на консультацию |
+
+Индексация PDF — отдельная команда или шаг при старте (загрузка/обновление эмбеддингов в ChromaDB).
 
 ### Сборка и локальный запуск
 
@@ -84,6 +133,7 @@ flowchart LR
 - **`Dockerfile`** — образ Python 3.11 + `uv`, запуск `main.py`
 - **`docker-compose.yml`** — сборка образа и запуск контейнера (`docker compose up --build`)
 - **`.dockerignore`** — исключает `.venv`, `__pycache__`, `.git` и т.п.
+- **Volume `./data`** — ChromaDB и `leads.db` сохраняются между перезапусками контейнера
 - Команда `docker-run` в скриптах вызывает **`docker compose up --build`**; остановка — `docker compose down`
 - На **Windows**: `.\make.ps1 docker-run` делегирует в WSL (Docker Desktop + WSL2); также можно напрямую в WSL — `make docker-run` / `./make.sh docker-run`
 - На **Linux / macOS**: `make docker-run` / `./make.sh docker-run`
@@ -96,17 +146,21 @@ flowchart LR
 |--------|---------|
 | Способ деплоя | GitHub-репозиторий → Railway, сборка по **`Dockerfile`** |
 | Процесс | Один long-running worker: `uv run python main.py` (polling) |
-| Webhook | **Не используется** — polling достаточен для MVP |
+| Webhook | **Не используется** — polling достаточен |
 | Переменные окружения | Панель Railway → Variables (те же ключи, что в `.env.example`) |
 | Секреты | Только в Variables Railway; `.env` в репозиторий не коммитится |
 | Health check | Не требуется (нет HTTP-эндпоинта); Railway держит контейнер запущенным |
-| Перезапуск | При рестарте контейнера история диалога сбрасывается (in-memory) |
+| Persistent data | Volume для `./data` (ChromaDB + leads); при рестарте без volume индекс и лиды теряются |
+| История диалога | In-memory; сбрасывается при перезапуске процесса |
 
 Минимальный набор переменных на Railway (вкладка **Variables**):
 
 - `TELEGRAM_BOT_TOKEN`
 - `OPEN_API_KEY` (или `OPENROUTER_API_KEY`)
-- `MODEL`, `VISION_MODEL`, `AUDIO_MODEL` — опционально (иначе дефолты из `Config`)
+- `LLM_BASE_URL`, `MODEL`, `EMBEDDING_MODEL`
+- `TAVILY_API_KEY`
+- `SYSTEM_PROMPT_FILE` — опционально (иначе дефолт из `Config`)
+- `LANGSMITH_ENABLED`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` — трейсинг (рекомендуется `LANGSMITH_ENABLED=true` на prod)
 
 Конфиг деплоя — **`railway.json`** (сборка по `Dockerfile`, restart on failure).
 
@@ -116,11 +170,14 @@ flowchart LR
 
 ### KISS
 
-- Цепочка: пользователь → Telegram → `DialogService` → клиент по типу сообщения → OpenRouter → ответ
-- Специализация через промпты; разные модели — только там, где нужна другая модальность
-- Без БД, кэша, очередей, микросервисов, отдельного STT (Whisper)
-- История и цели пользователя — **в памяти процесса** (сбрасываются при перезапуске)
+- Цепочка: пользователь → Telegram → `AgentService` → агентный цикл (LLM + tools) → ответ
+- **Без LangChain и тяжёлых AI-фреймворков** — только openai SDK и минимальные библиотеки
+- **Агентный цикл явный и читаемый** — tool calling в коде, без скрытых оркестраторов
+- Специализация через системный промпт и набор инструментов
+- Без микросервисов, очередей, отдельного web-сервера
+- История диалога — **в памяти процесса** (сбрасывается при перезапуске)
 - **Последние 20 пар** user/assistant на пользователя
+- Persistent-хранилища — только там, где нужны продукту: RAG (ChromaDB) и лиды (SQLite)
 
 ### ООП: 1 класс = 1 файл
 
@@ -132,16 +189,24 @@ flowchart LR
 
 | Класс | Зона ответственности |
 |-------|---------------------|
-| `Bot` | Приём и отправка сообщений Telegram (текст, фото, голос) |
-| `LlmClient` | Текстовый диалог через OpenRouter |
-| `ImageClient` | Анализ фото еды/продуктов через OpenRouter (vision) |
-| `AudioClient` | Транскрипция голоса через OpenRouter (`input_audio` base64) |
-| `DialogService` | История, цели пользователя, маршрутизация по типу сообщения |
-| `Config` | Настройки, модели и пути к промптам из env |
+| `Bot` | Приём и отправка текстовых сообщений Telegram |
+| `AgentService` | История, агентный цикл, вызов инструментов |
+| `LlmClient` | Запросы к OpenRouter: chat + tool calling |
+| `EmbeddingClient` | Эмбеддинги для RAG (`text-embedding-3-small`) |
+| `RagService` | Индексация PDF и `rag_search` по ChromaDB |
+| `WebSearchTool` | `web_search` через Tavily |
+| `LeadStore` | `capture_lead` — запись заявок в SQLite |
+| `Config` | Настройки, модели, пути к промптам и данным из env |
 
 ### Async
 
-- Весь код асинхронный (`async`/`await`) — требование aiogram 3
+- Весь I/O асинхронный (`async`/`await`) — aiogram 3, HTTP-запросы к API
+
+### Трейсинг
+
+- Зависимость **`langsmith`** обязательна; ключевые async-методы — с **`@traceable`**
+- Список трейсируемых функций — см. §1 «Трейсинг (LangSmith)»
+- Без LangChain: только декоратор и env-переменные LangSmith
 
 ### Запуск
 
@@ -152,4 +217,5 @@ flowchart LR
 ### Без оверинжиниринга
 
 - Нет абстрактных базовых классов и паттернов «на будущее»
+- Нет LangChain, LlamaIndex и аналогов
 - Нет тестовой инфраструктуры на старте
