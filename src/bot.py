@@ -5,6 +5,7 @@ from aiogram import Bot as AiogramBot
 from aiogram import Dispatcher, F, types
 from aiogram.filters import CommandStart
 
+from src.agent_service import AgentService
 from src.audio_converter import AudioConverterError
 from src.dialog_service import DialogService
 from src.llm_client import LlmAuthError, LlmProviderError, ModalityNotSupportedError
@@ -31,9 +32,10 @@ MAX_MESSAGE_LENGTH = 4096
 
 
 class Bot:
-    def __init__(self, token: str, dialog: DialogService) -> None:
+    def __init__(self, token: str, agent: AgentService, dialog: DialogService) -> None:
         self._bot = AiogramBot(token=token)
         self._dp = Dispatcher()
+        self._agent = agent
         self._dialog = dialog
         self._register_handlers()
 
@@ -110,7 +112,7 @@ class Bot:
             if not message.text:
                 return
             try:
-                reply = await self._dialog.reply(message.from_user.id, message.text)
+                reply = await self._agent.handle_message(message.from_user.id, message.text)
                 await self._send_reply(message, reply)
             except LlmAuthError:
                 logging.exception("LLM authentication failed")

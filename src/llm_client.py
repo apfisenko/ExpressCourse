@@ -8,6 +8,7 @@ from openai import (
     PermissionDeniedError,
     RateLimitError,
 )
+from openai.types.chat import ChatCompletionMessageToolCall
 
 from src.config import Config
 
@@ -102,12 +103,16 @@ class LlmClient:
         )
         self._model = self._config.model
 
-    async def chat(self, messages: list[dict[str, str]]) -> str:
+    async def chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+    ) -> tuple[str | None, list[ChatCompletionMessageToolCall] | None]:
+        kwargs: dict = {"model": self._model, "messages": messages}
+        if tools:
+            kwargs["tools"] = tools
         try:
-            response = await self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-            )
+            response = await self._client.chat.completions.create(**kwargs)
         except AuthenticationError as exc:
             raise LlmAuthError from exc
         except PermissionDeniedError as exc:
@@ -123,4 +128,7 @@ class LlmClient:
         ) as exc:
             raise_for_completion_error(exc, "text", self._model)
 
-        return response.choices[0].message.content or ""
+        message = response.choices[0].message
+        tool_calls = message.tool_calls or None
+        content = message.content or None
+        return content, tool_calls

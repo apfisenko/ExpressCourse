@@ -76,8 +76,12 @@ class DialogService:
             *messages,
         ]
 
+        async def _call() -> str:
+            content, _ = await self._llm.chat(messages_for_llm)
+            return content or ""
+
         reply = await self._call_with_retry(
-            lambda: self._llm.chat(messages_for_llm),
+            _call,
             on_retry=lambda: self._refresh_system_message(messages_for_llm, user_id),
             on_failure=lambda: messages.pop(),
         )

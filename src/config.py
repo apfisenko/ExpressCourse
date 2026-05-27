@@ -16,6 +16,9 @@ class Config:
     def __init__(self) -> None:
         load_dotenv(_ENV_FILE)
         self.telegram_bot_token = self._require("TELEGRAM_BOT_TOKEN")
+        self.langsmith_enabled = os.getenv("LANGSMITH_ENABLED", "false").strip().lower() == "true"
+        self.langsmith_api_key = os.getenv("LANGSMITH_API_KEY", "").strip()
+        self.langsmith_project = os.getenv("LANGSMITH_PROJECT", "expresscourse").strip()
         self.reload_llm_settings()
 
     def reload_llm_settings(self) -> None:
